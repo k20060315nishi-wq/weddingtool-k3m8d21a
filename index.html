@@ -250,14 +250,7 @@
     ui.checkin.classList.remove('hidden');
     window.scrollTo(0, 0);
 };
-
-            clearGuestUI();
-            currentGuest = found;
-            ui.guestNameDisplay.forEach(el => el.textContent = `${found.name} 様`);
-            ui.welcome.classList.add('hidden');
-            ui.checkin.classList.remove('hidden');
-            window.scrollTo(0,0);
-        };
+    
 
         function normalize(str) {
             return String(str || "").normalize("NFKC").replace(/[\u30A1-\u30F6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '').toLowerCase();
