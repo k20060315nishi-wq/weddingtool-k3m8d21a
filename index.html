@@ -221,33 +221,34 @@
         }
 
         window.searchGuest = async () => {
-            const input = normalize(ui.nameInput.value);
-            if (!input) return showModal("お名前を入力してください");
-            const found = allGuests.find(g => normalize(g.kana) === input || normalize(g.name) === input);
-            if (!found) return showModal("お名前が見つかりませんでした　スタッフまでお声がけください");
 
-            if (found.checkedIn) {
-
-        return showModal("すでに受付済みです");
-
+    const input = normalize(ui.nameInput.value);
+    if (!input) {
+        return showModal("お名前を入力してください");
+    }
+    const found = allGuests.find(
+        g =>
+            normalize(g.kana) === input ||
+            normalize(g.name) === input
+    );
+　
+    if (!found) {
+        return showModal("お名前が見つかりませんでした　スタッフまでお声がけください");
     }
 
+    // すでに受付済みかチェック
+    if (found.checkedIn) {
+        return showModal("こちらのお客様は受付済みです");
+    }
     clearGuestUI();
-
     currentGuest = found;
-
     ui.guestNameDisplay.forEach(el => {
-
         el.textContent = `${found.name} 様`;
-
     });
 
     ui.welcome.classList.add('hidden');
-
     ui.checkin.classList.remove('hidden');
-
-    window.scrollTo(0,0);
-
+    window.scrollTo(0, 0);
 };
 
             clearGuestUI();
