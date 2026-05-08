@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja" class="scroll-smooth">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -31,12 +31,22 @@
     </script>
 
     <style>
-        body { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-        .bg-overlay::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.3); z-index: 0; }
-        .bg-visual-main { background-image: url('https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=2000&q=80'); background-size: cover; background-position: center; }
-        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
-        
-        /* Animations */
+        /* --- Base & Scroll Control --- */
+        html, body {
+            height: 100%;
+            width: 100%;
+            overflow: hidden; /* デフォルトは固定 */
+            overscroll-behavior: none; /* iPhoneのバウンス/リロードを禁止 */
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        /* スクロールが必要な画面用クラス */
+        body.can-scroll {
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* --- Custom Animations --- */
         .spinner { width: 40px; height: 40px; border: 3px solid rgba(197, 160, 89, 0.2); border-radius: 50%; border-top-color: #C5A059; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         
@@ -49,10 +59,10 @@
         .zoom-in-out { animation: zoom-card 2.5s cubic-bezier(0.23, 1, 0.32, 1) forwards; }
         @keyframes zoom-card { 0% { transform: scale(0.5); opacity: 0; } 20% { transform: scale(1.1); opacity: 1; } 80% { transform: scale(1); opacity: 1; } 100% { transform: scale(1.2); opacity: 0; } }
 
-        .glow-animation { animation: glow-pulse 2s infinite ease-in-out; z-index: 50 !important; position: relative; }
+        .glow-animation { animation: glow-pulse 2s infinite ease-in-out; position: relative; z-index: 50; }
         @keyframes glow-pulse {
-            0%, 100% { box-shadow: 0 0 10px rgba(197, 160, 89, 0.6); transform: scale(1.1); background-color: #C5A059; }
-            50% { box-shadow: 0 0 30px rgba(197, 160, 89, 1); transform: scale(1.3); background-color: #D4AF37; }
+            0%, 100% { box-shadow: 0 0 10px rgba(197, 160, 89, 0.6); transform: scale(1.1); background-color: #C5A059; color: white; }
+            50% { box-shadow: 0 0 30px rgba(197, 160, 89, 1); transform: scale(1.3); background-color: #D4AF37; color: white; }
         }
 
         .guide-text { animation: pulse 2s infinite; }
@@ -61,6 +71,11 @@
         .btn-gold-shimmer { position: relative; overflow: hidden; background: linear-gradient(135deg, #2C2C2C 0%, #444444 100%); }
         .btn-gold-shimmer::after { content: ''; position: absolute; top: -50%; left: -50%; width: 200%; height: 200%; background: linear-gradient(to bottom right, transparent 40%, rgba(255,255,255,0.4) 50%, transparent 60%); transform: rotate(45deg); animation: shimmer 4s infinite; }
         @keyframes shimmer { 0% { transform: translateX(-150%) rotate(45deg); } 20%, 100% { transform: translateX(150%) rotate(45deg); } }
+        
+        .is-dragging { background-color: rgba(197, 160, 89, 0.1); transition: background-color 0.2s; }
+        .bg-visual-main { background-image: url('https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&w=2000&q=80'); background-size: cover; background-position: center; }
+        .bg-overlay::before { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.3); z-index: 0; }
+        .glass-panel { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
     </style>
 
     <script type="module">
@@ -82,7 +97,6 @@
         let currentGuest = null;
         let isProcessing = false;
 
-        const screens = ['welcome-screen', 'checkin-screen', 'zoom-screen', 'seating-screen'];
         const ui = {
             loading: document.getElementById('loading-overlay'),
             modal: document.getElementById('custom-modal'),
@@ -94,7 +108,7 @@
             stampMark: document.getElementById('stamp-mark')
         };
 
-        // --- Core Functions ---
+        // --- Init & Data ---
 
         async function init() {
             const app = initializeApp(firebaseConfig);
@@ -115,40 +129,73 @@
             });
         }
 
-        function switchScreen(screenId) {
+        // --- Navigation ---
+
+        window.switchScreen = (screenId) => {
+            const screens = ['welcome-screen', 'checkin-screen', 'zoom-screen', 'seating-screen'];
             screens.forEach(id => document.getElementById(id).classList.add('hidden'));
             document.getElementById(screenId).classList.remove('hidden');
-            window.scrollTo(0, 0);
-        }
 
-        window.showModal = (msg, duration = 0) => {
-            ui.modalText.textContent = msg;
-            ui.modal.classList.remove('hidden');
-            ui.modal.classList.add('flex');
-            if (duration > 0) setTimeout(() => ui.modal.classList.add('hidden'), duration);
+            // 画面ごとのスクロール・制御
+            if (screenId === 'seating-screen' || screenId === 'welcome-screen') {
+                document.body.classList.add('can-scroll');
+            } else {
+                document.body.classList.remove('can-scroll');
+            }
+            window.scrollTo(0, 0);
         };
 
-        // --- Logic Functions ---
+        // --- Logic ---
 
         window.searchGuest = () => {
             const input = normalize(ui.nameInput.value);
             if (!input) return showModal("お名前を入力してください");
 
             const found = allGuests.find(g => normalize(g.kana) === input || normalize(g.name) === input);
-            if (!found) return showModal("お名前が見つかりませんでした。スタッフにお声がけください。");
+            if (!found) return showModal("スタッフにお声がけください");
 
             currentGuest = found;
             ui.guestNameDisplay.forEach(el => el.textContent = `${found.name} 様`);
 
             if (found.checkedIn) {
-                // すでに受付済みの場合：案内を出して直接座席へ
                 showModal("受付済です", 2000);
                 setTimeout(() => showSeating(), 1500);
             } else {
-                // 未受付の場合：通常のフロー
                 switchScreen('checkin-screen');
             }
         };
+
+        function setupInteraction() {
+            let startX, startY;
+            const SWIPE_THRESHOLD = 130;
+            const EDGE_GUARD = 30;
+
+            ui.interactionLayer.addEventListener('touchstart', e => {
+                const t = e.touches[0];
+                if (t.clientX < EDGE_GUARD) { startX = null; return; }
+                startX = t.clientX;
+                startY = t.clientY;
+                ui.interactionLayer.classList.add('is-dragging');
+            }, { passive: true });
+
+            ui.interactionLayer.addEventListener('touchmove', e => {
+                if (e.cancelable) e.preventDefault(); // スクロール完全停止
+                if (isProcessing || startX === null) return;
+
+                const t = e.touches[0];
+                const dx = t.clientX - startX;
+                const dy = t.clientY - startY;
+                if (Math.sqrt(dx * dx + dy * dy) > SWIPE_THRESHOLD) {
+                    startX = null;
+                    processCheckIn();
+                }
+            }, { passive: false });
+
+            ui.interactionLayer.addEventListener('touchend', () => {
+                ui.interactionLayer.classList.remove('is-dragging');
+                startX = null;
+            });
+        }
 
         window.processCheckIn = async () => {
             if (isProcessing || !currentGuest) return;
@@ -185,12 +232,12 @@
             switchScreen('seating-screen');
             document.getElementById('table-no').textContent = currentGuest.table || "";
             
-            document.querySelectorAll('.table-item').forEach(el => el.classList.remove('text-white', 'glow-animation'));
+            document.querySelectorAll('.table-item').forEach(el => el.classList.remove('glow-animation'));
 
             const elementId = currentGuest.tableID?.startsWith('table-') ? currentGuest.tableID : `table-${currentGuest.tableID}`;
             const target = document.getElementById(elementId);
             if (target) {
-                target.classList.add('text-white', 'glow-animation');
+                target.classList.add('glow-animation');
                 setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 500);
             }
         }
@@ -205,38 +252,30 @@
             isProcessing = false;
         };
 
-        // --- Utilities ---
-
+        // --- Utils ---
         function normalize(str) {
             return String(str || "").normalize("NFKC").replace(/[\u30A1-\u30F6]/g, m => String.fromCharCode(m.charCodeAt(0) - 0x60)).replace(/[\s　]/g, '').toLowerCase();
         }
-
-        function setupInteraction() {
-            let startX, startY;
-            const SWIPE_THRESHOLD = 100;
-            ui.interactionLayer.addEventListener('touchstart', e => {
-                const t = e.touches[0]; startX = t.clientX; startY = t.clientY;
-            });
-            ui.interactionLayer.addEventListener('touchmove', e => {
-                if (isProcessing || !startX) return;
-                const t = e.touches[0];
-                if (Math.sqrt(Math.pow(t.clientX - startX, 2) + Math.pow(t.clientY - startY, 2)) > SWIPE_THRESHOLD) {
-                    startX = null; processCheckIn();
-                }
-            });
-        }
+        window.showModal = (msg, duration = 0) => {
+            ui.modalText.textContent = msg;
+            ui.modal.classList.remove('hidden');
+            ui.modal.classList.add('flex');
+            if (duration > 0) setTimeout(() => ui.modal.classList.add('hidden'), duration);
+        };
 
         window.onload = init;
     </script>
 </head>
-<body class="bg-sand text-charcoal font-sans select-none overflow-x-hidden">
+<body class="bg-sand text-charcoal font-sans select-none">
 
+    <!-- Loading -->
     <div id="loading-overlay" class="fixed inset-0 z-[100] bg-sand/90 flex flex-col items-center justify-center">
         <div class="spinner mb-4"></div>
         <p class="text-gold-700 text-[10px] tracking-[0.4em]">Loading</p>
     </div>
 
-    <div id="custom-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60">
+    <!-- Alert Modal -->
+    <div id="custom-modal" class="hidden fixed inset-0 z-[110] items-center justify-center p-6 bg-black/60">
         <div class="w-full max-w-sm glass-panel p-8 rounded-3xl text-center shadow-2xl">
             <p id="modal-message" class="text-base mb-6"></p>
             <button onclick="document.getElementById('custom-modal').classList.add('hidden')" class="w-full py-4 bg-charcoal text-white rounded-full text-xs">閉じる</button>
@@ -256,7 +295,7 @@
             <div class="w-full max-w-sm space-y-10 mt-12 text-center">
                 <div class="space-y-2">
                     <h2 class="text-3xl font-serif tracking-[0.2em] font-bold">Welcome</h2>
-                    <p class="text-xs text-gray-400">氏名を「ひらがな」で入力してください</p>
+                    <p class="text-xs text-gray-400">お名前を「ひらがな」で入力してください</p>
                 </div>
                 <input type="text" id="name-input" class="w-full py-4 text-3xl text-center bg-transparent border-b-2 border-gray-200 focus:border-gold-500 outline-none" placeholder="まいはま　みきお">
                 <button onclick="searchGuest()" class="btn-gold-shimmer w-full py-5 text-white rounded-full tracking-[0.5em] font-serif shadow-2xl uppercase text-sm font-bold">Search</button>
@@ -264,11 +303,13 @@
         </div>
     </div>
 
-    <!-- 2. Check-in Screen -->
-    <div id="checkin-screen" class="hidden min-h-screen p-4 flex flex-col items-center justify-center">
+    <!-- 2. Check-in Screen (Locked) -->
+    <div id="checkin-screen" class="hidden h-[100dvh] w-full fixed inset-0 bg-sand flex flex-col items-center justify-center p-4">
         <div class="w-full max-w-sm glass-panel rounded-[2.5rem] p-6 shadow-2xl text-center relative overflow-hidden flex flex-col items-center min-h-[500px]">
             <p class="font-serif text-gold-500 text-xs tracking-[0.4em] mb-12">Seating guidance</p>
-            <div id="interaction-layer" class="relative w-full py-20 flex flex-col items-center justify-center mb-8 bg-white/50 rounded-3xl overflow-hidden cursor-pointer">
+            <div id="interaction-layer" 
+                 class="relative w-full py-20 flex flex-col items-center justify-center mb-8 bg-white/50 rounded-3xl overflow-hidden cursor-pointer"
+                 style="touch-action: none;">
                 <div class="guide-text mb-4 z-20">
                     <span class="text-ink font-bold text-[10px] bg-white/80 px-4 py-1.5 rounded-full shadow-sm border border-ink/10">受付までお越しください</span>
                 </div>
@@ -285,15 +326,15 @@
         <button onclick="reset()" class="mt-8 text-[10px] text-gray-400 underline">Top Screen</button>
     </div>
 
-    <!-- 2.5 Zoom Display Screen -->
-    <div id="zoom-screen" class="hidden fixed inset-0 z-[80] bg-charcoal flex flex-col items-center justify-center p-6">
+    <!-- 2.5 Zoom Screen (Locked) -->
+    <div id="zoom-screen" class="hidden fixed inset-0 z-[80] bg-charcoal h-[100dvh] w-full flex flex-col items-center justify-center p-6">
         <div class="zoom-in-out w-full max-w-sm aspect-square bg-white rounded-[3rem] shadow-2xl flex flex-col items-center justify-center text-center p-12 border-[12px] border-gold-300">
             <p class="font-serif text-gold-500 text-sm tracking-[0.5em] mb-8 uppercase">Your Table</p>
             <h4 id="zoom-table-no" class="text-9xl font-serif font-bold text-charcoal"></h4>
         </div>
     </div>
 
-    <!-- 3. Seating Chart Screen -->
+    <!-- 3. Seating Screen (Scrollable) -->
     <div id="seating-screen" class="hidden min-h-screen p-6 flex flex-col items-center bg-sand">
         <div class="w-full max-w-sm glass-panel rounded-[2.5rem] p-10 shadow-2xl text-center mb-10 border-t-[10px] border-success">
             <h3 class="guest-name-label text-3xl font-bold mb-6"></h3>
